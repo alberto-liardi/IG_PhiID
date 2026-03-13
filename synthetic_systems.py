@@ -168,6 +168,7 @@ def get_PhiID_synthetic_discrete(noise=1e-32):
               binary variables (X1, X2, X3, X4).
     """
 
+    # sts
     p = 1 / 8
     xor = {
         (0, 0, 0, 0): p,
@@ -188,6 +189,7 @@ def get_PhiID_synthetic_discrete(noise=1e-32):
         (1, 1, 1, 1): p,
     }
 
+    # rtr or xtb
     copy_transfer = {
         (0, 0, 0, 0): p,
         (0, 0, 0, 1): noise,
@@ -207,6 +209,7 @@ def get_PhiID_synthetic_discrete(noise=1e-32):
         (1, 1, 1, 1): p,
     }
 
+    # xta and ytb
     p = 1 / 4
     transfer = {
         (0, 0, 0, 0): p,
@@ -227,6 +230,7 @@ def get_PhiID_synthetic_discrete(noise=1e-32):
         (1, 1, 1, 1): p,
     }
 
+    # TBC
     p = 1 / 4
     copy = {
         (0, 0, 0, 0): p,
@@ -247,7 +251,8 @@ def get_PhiID_synthetic_discrete(noise=1e-32):
         (1, 1, 1, 1): p,
     }
 
-    p = 1/2
+    # rtr
+    p = 1 / 2
     giant_bit = {
         (0, 0, 0, 0): p,
         (0, 0, 0, 1): noise,
@@ -267,7 +272,50 @@ def get_PhiID_synthetic_discrete(noise=1e-32):
         (1, 1, 1, 1): p,
     }
 
+    # rtx
+    p = 1 / 4
+    rtx = {
+        (0, 0, 0, 0): p,
+        (0, 0, 0, 1): p,
+        (0, 0, 1, 0): noise,
+        (0, 0, 1, 1): noise,
+        (0, 1, 0, 0): noise,
+        (0, 1, 0, 1): noise,
+        (0, 1, 1, 0): noise,
+        (0, 1, 1, 1): noise,
+        (1, 0, 0, 0): noise,
+        (1, 0, 0, 1): noise,
+        (1, 0, 1, 0): noise,
+        (1, 0, 1, 1): noise,
+        (1, 1, 0, 0): noise,
+        (1, 1, 0, 1): noise,
+        (1, 1, 1, 0): p,
+        (1, 1, 1, 1): p,
+    }
+
+    # xtr
+    p = 1 / 4
+    xtr = {
+        (0, 0, 0, 0): p,
+        (0, 0, 0, 1): noise,
+        (0, 0, 1, 0): noise,
+        (0, 0, 1, 1): noise,
+        (0, 1, 0, 0): p,
+        (0, 1, 0, 1): noise,
+        (0, 1, 1, 0): noise,
+        (0, 1, 1, 1): noise,
+        (1, 0, 0, 0): noise,
+        (1, 0, 0, 1): noise,
+        (1, 0, 1, 0): noise,
+        (1, 0, 1, 1): p,
+        (1, 1, 0, 0): noise,
+        (1, 1, 0, 1): noise,
+        (1, 1, 1, 0): noise,
+        (1, 1, 1, 1): p,
+    }
+
     p = 1 / 8
+    # sta
     down_XOR = {
         (0, 0, 0, 0): p,
         (0, 0, 0, 1): p,
@@ -287,6 +335,7 @@ def get_PhiID_synthetic_discrete(noise=1e-32):
         (1, 1, 1, 1): noise,
     }
 
+    # yts
     up_XOR = {
         (0, 0, 0, 0): p,
         (0, 0, 0, 1): noise,
@@ -306,6 +355,48 @@ def get_PhiID_synthetic_discrete(noise=1e-32):
         (1, 1, 1, 1): noise,
     }
 
+    # rts
+    p = 1 / 4
+    rts = {
+        (0, 0, 0, 0): p,
+        (0, 0, 0, 1): noise,
+        (0, 0, 1, 0): noise,
+        (0, 0, 1, 1): p,
+        (0, 1, 0, 0): noise,
+        (0, 1, 0, 1): noise,
+        (0, 1, 1, 0): noise,
+        (0, 1, 1, 1): noise,
+        (1, 0, 0, 0): noise,
+        (1, 0, 0, 1): noise,
+        (1, 0, 1, 0): noise,
+        (1, 0, 1, 1): noise,
+        (1, 1, 0, 0): noise,
+        (1, 1, 0, 1): p,
+        (1, 1, 1, 0): p,
+        (1, 1, 1, 1): noise,
+    }
+
+    # strr
+    p = 1 / 4
+    strr = {
+        (0, 0, 0, 0): p,
+        (0, 0, 0, 1): noise,
+        (0, 0, 1, 0): noise,
+        (0, 0, 1, 1): noise,
+        (0, 1, 0, 0): noise,
+        (0, 1, 0, 1): noise,
+        (0, 1, 1, 0): noise,
+        (0, 1, 1, 1): p,
+        (1, 0, 0, 0): noise,
+        (1, 0, 0, 1): noise,
+        (1, 0, 1, 0): noise,
+        (1, 0, 1, 1): p,
+        (1, 1, 0, 0): p,
+        (1, 1, 0, 1): noise,
+        (1, 1, 1, 0): noise,
+        (1, 1, 1, 1): noise,
+    }
+
     dicts = {
         "xor": xor,
         "copy_transfer": copy_transfer,
@@ -313,7 +404,11 @@ def get_PhiID_synthetic_discrete(noise=1e-32):
         "transfer": transfer,
         "down_XOR": down_XOR,
         "up_XOR": up_XOR,
+        "rts": rts,
         "giant_bit": giant_bit,
+        "rtx": rtx,
+        "xtr": xtr,
+        "str": strr,
     }
 
     probs = {
@@ -323,6 +418,10 @@ def get_PhiID_synthetic_discrete(noise=1e-32):
         "XOR": np.array(list(xor.values())).reshape(2, 2, 2, 2),
         "down_XOR": np.array(list(down_XOR.values())).reshape(2, 2, 2, 2),
         "up_XOR": np.array(list(up_XOR.values())).reshape(2, 2, 2, 2),
+        "str": np.array(list(strr.values())).reshape(2, 2, 2, 2),
+        "rtx": np.array(list(rtx.values())).reshape(2, 2, 2, 2),
+        "xtr": np.array(list(xtr.values())).reshape(2, 2, 2, 2),
+        "rts": np.array(list(rts.values())).reshape(2, 2, 2, 2),
         "transfer": np.array(list(transfer.values())).reshape(2, 2, 2, 2),
         "giant_bit": np.array(list(giant_bit.values())).reshape(2, 2, 2, 2),
     }

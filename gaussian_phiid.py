@@ -1,17 +1,35 @@
 import numpy as np
 from get_lattice import get_ig_lattice
-from gaussian_utils import compute_all_mi_terms, get_projected_cov, KL_gaussian_inv
+from gaussian_utils import compute_all_mi_terms, get_projected_cov, KL_gaussian_inv, demean
 from scipy.optimize import minimize
 
-from scipy.linalg import cholesky, solve
+from scipy.linalg import cholesky, solve, block_diag
 from scipy.optimize import root_scalar, minimize
 
 
-def PID_IG(Sigma, S1, S2, T):
+def PID_IG(Sigma, S1, S2, T, pointwise=False, data=None, only_syn=False):
+    """
+    Compute PID IG for Gaussian data. 
+
+    Parameters:
+        Sigma (numpy.ndarray): Covariance matrix of the system.
+        S1 (int): Dimension of the first source variable(s).
+        S2 (int): Dimension of the second source variable(s).
+        T (int): Dimension of the target variable(s).
+        pointwise (bool): Whether to compute pointwise PID (default: False).
+        data (numpy.ndarray): Data samples of shape (d, N) for pointwise calculation (required if pointwise=True).
+        only_syn (bool): Whether to compute only the synergistic component for pointwise PID (default: False).
+    Returns:
+        np.array or dict: containing the PID values for each atom in BITS. 
+                            If pointwise=False, returns a dict with keys 'Red', 'UnX', 'UnY', 'Syn'. 
+                            If pointwise=True, returns a dict with the same keys but each value is an array of shape (N,).
+    """
+    assert Sigma.shape == ((S1 + S2 + T),(S1 + S2 + T)), "Covariance matrix has incorrect shape."
+    # assert np.linalg.eigvals(Sigma).min() > 1e-8, "Covariance matrix is not positive definite."
 
     # Convert to correlation matrix
     d = np.diag(1 / np.sqrt(np.diag(Sigma)))
-    Sigma = d @ Sigma @ d
+    Sigma_corr = d @ Sigma @ d
 
     n0, n1, n2 = S1, S2, T
     ind0 = np.arange(n0)
@@ -22,12 +40,12 @@ def PID_IG(Sigma, S1, S2, T):
     I1 = np.eye(n1)
     I2 = np.eye(n2)
 
-    S00 = Sigma[np.ix_(ind0, ind0)]
-    S01 = Sigma[np.ix_(ind0, ind1)]
-    S02 = Sigma[np.ix_(ind0, ind2)]
-    S11 = Sigma[np.ix_(ind1, ind1)]
-    S12 = Sigma[np.ix_(ind1, ind2)]
-    S22 = Sigma[np.ix_(ind2, ind2)]
+    S00 = Sigma_corr[np.ix_(ind0, ind0)]
+    S01 = Sigma_corr[np.ix_(ind0, ind1)]
+    S02 = Sigma_corr[np.ix_(ind0, ind2)]
+    S11 = Sigma_corr[np.ix_(ind1, ind1)]
+    S12 = Sigma_corr[np.ix_(ind1, ind2)]
+    S22 = Sigma_corr[np.ix_(ind2, ind2)]
 
     InvSq00 = solve(cholesky(S00, lower=False), I0)
     InvSq11 = solve(cholesky(S11, lower=False), I1)
@@ -113,6 +131,15 @@ def PID_IG(Sigma, S1, S2, T):
     tstar = res.x[0]
     syn = res.fun
 
+    # minimising distribution
+    distr = np.linalg.inv((1 - tstar) * sig5_inv + tstar * sig6_inv)
+    # remap it to original space
+    W = block_diag(InvSq00.T, InvSq11.T, InvSq22.T)
+    TT = W @ d
+    Tinv = np.linalg.inv(TT)
+    distr = Tinv @ distr @ Tinv.T
+    distr_og = Tinv @ Sig @ Tinv.T
+
     # Mutual informations
     i13 = 0.5 * np.log(1 / dQ)
     i23 = 0.5 * np.log(1 / dR)
@@ -128,10 +155,20 @@ def PID_IG(Sigma, S1, S2, T):
     red = i13 - unq1
     pid = np.array([red, unq1, unq2, syn]) / np.log(2)
 
-    return {"PD": PD, "feas": feas, "t_star": tstar, "inf": inf, "pid": pid}
+    # NB: do not retrieve the atoms, which are still in NATS.
+    out_dict = {"PD": PD, "feas": feas, "t_star": tstar, "distr": distr, "distr_original": distr_og, "inf": inf, "pid": pid}
+    if pointwise:
+        if data is None:
+            raise ValueError("Data must be provided for pointwise PID calculation.")
+        assert data.shape[0] == Sigma.shape[0], "Data dimensionality does not match covariance matrix."
+        from gaussian_utils import pointwise_pid_IG
+        pt_pid = pointwise_pid_IG(Sigma, distr, data, S1, S2, T, only_syn=only_syn)
+        out_dict["pointwise_pid"] = pt_pid
+
+    return out_dict
 
 
-def get_sts_IG(cov, n1=1, n2=1):
+def get_sts_IG(cov, n1=1, n2=1, pointwise=False, data=None):
 
     cov = cov / np.sqrt(np.diag(cov)[:, None] * np.diag(cov)[None, :])
 
@@ -167,12 +204,27 @@ def get_sts_IG(cov, n1=1, n2=1):
     if not res.success:
         raise RuntimeError(f"KL minimization failed: {res.message}")
 
-    syn = res.fun
+    syn = res.fun / np.log(2)
+    if pointwise:
+        if data is None:
+            raise ValueError("Data must be provided for pointwise STS calculation.")
+        distr = np.linalg.inv((1 - res.x[0] - res.x[1] - res.x[2]) * inv_cov11 + res.x[0] * inv_cov12 + res.x[1] * inv_cov21 + res.x[2] * inv_cov22)
+        assert data.shape[0] == cov.shape[0], "Data dimensionality does not match covariance matrix."
+        from gaussian_utils import pointwise_phiid_IG
+        pt_syn = pointwise_phiid_IG(cov, distr, data)
 
-    return syn
+        return pt_syn, syn
+    else:
+        return [syn]
 
 
-def ig_phiid_gaussian(cov, n1=1, n2=1, as_dict=True, verbose=False):
+def ig_phiid_gaussian(cov, n1=1, n2=1, as_dict=True, verbose=False, pointwise=False, data=None):
+    if pointwise:
+        if data is None:
+            raise ValueError("Data must be provided for pointwise calculation.")
+        assert data.shape[0] == cov.shape[0], "Data dimensionality does not match covariance matrix."
+        # since the covariance will become a correlation matrix, we need to standardize the data
+        data = demean(data)
 
     assert cov.shape == (
         2 * (n1 + n2),
@@ -182,44 +234,58 @@ def ig_phiid_gaussian(cov, n1=1, n2=1, as_dict=True, verbose=False):
         np.linalg.eigvals(cov).min() > 1e-8
     ), "Covariance matrix is not positive definite."
 
+    x = list(range(n1))
+    y = list(range(n1, n1 + n2))
+    a = list(range(n1 + n2, n1 + n2 + n1))
+    b = list(range(n1 + n2 + n1, 2 * (n1 + n2)))
+
     # make correlation matrix
     cov = cov / np.sqrt(np.diag(cov)[:, None] * np.diag(cov)[None, :])
 
-    phiid = compute_all_mi_terms(cov)
+    phiid = compute_all_mi_terms(cov, n1, n2, n1, n2, pointwise=pointwise, data=data)
+
+    def get_PID(cov, S1, S2, T, pointwise=False, data=None):
+        if pointwise:
+            pid = PID_IG(cov, S1, S2, T, pointwise=True, data=data, only_syn=True)
+            return pid["pointwise_pid"], pid["pid"][3]
+        else:
+            return [PID_IG(cov, S1, S2, T)["pid"][3]]
 
     # for phiid, do the 6 pids:
     # (X1,X2,Y1)
-    I_stx_str = PID_IG(cov[np.ix_([0, 1, 2], [0, 1, 2])], 1, 1, 1)["pid"][3]
+    I_stx_str = get_PID(cov[np.ix_(x + y + a, x + y + a)], n1, n2, n1, pointwise=pointwise, data=data[x+y+a, :] if data is not None else None)
     # (X1,X2,Y2)
-    I_sty_str = PID_IG(cov[np.ix_([0, 1, 3], [0, 1, 3])], 1, 1, 1)["pid"][3]
+    I_sty_str = get_PID(cov[np.ix_(x + y + b, x + y + b)], n1, n2, n2, pointwise=pointwise, data=data[x+y+b, :] if data is not None else None)
     # (X1,Y1,Y2)
-    I_xts_rts = PID_IG(cov[np.ix_([2, 3, 0], [2, 3, 0])], 1, 1, 1)["pid"][3]
+    I_xts_rts = get_PID(cov[np.ix_(a + b + x, a + b + x)], n1, n2, n1, pointwise=pointwise, data=data[a+b+x, :] if data is not None else None)
     # (X2,Y1,Y2)
-    I_yts_rts = PID_IG(cov[np.ix_([2, 3, 1], [2, 3, 1])], 1, 1, 1)["pid"][3]
+    I_yts_rts = get_PID(cov[np.ix_(a + b + y, a + b + y)], n1, n2, n2, pointwise=pointwise, data=data[a+b+y, :] if data is not None else None)
     # (X1,X2,(Y1,Y2))
-    I_str_stx_sty_sts = PID_IG(cov, 1, 1, 2)["pid"][3]
+    I_str_stx_sty_sts = get_PID(cov, n1, n2, n1+n2, pointwise=pointwise, data=data if data is not None else None)
     # ((X1,X2),Y1,Y2)
-    I_rts_xts_yts_sts = PID_IG(cov[np.ix_([2, 3, 0, 1], [2, 3, 0, 1])], 1, 1, 2)["pid"][
-        3
-    ]
+    I_rts_xts_yts_sts = get_PID(cov[np.ix_(a + b + x + y, a + b + x + y)], n1, n2, n1+n2, pointwise=pointwise, data=data[a+b+x+y, :] if data is not None else None)
 
-    I_sts = get_sts_IG(cov, n1, n2) / np.log(2)
+    I_sts = get_sts_IG(cov, n1, n2, pointwise=pointwise, data=data)
 
-    phiid.update(
-        dict(
-            I_stx_str=I_stx_str,
-            I_sty_str=I_sty_str,
-            I_xts_rts=I_xts_rts,
-            I_yts_rts=I_yts_rts,
-            I_str_stx_sty_sts=I_str_stx_sty_sts,
-            I_rts_xts_yts_sts=I_rts_xts_yts_sts,
-            I_sts=I_sts,
-        )
-    )
-
-    phiid = get_ig_lattice(phiid, verbose=verbose)
+    for n,d in enumerate(phiid):
+        d.update(dict(
+            I_stx_str=I_stx_str[n],
+            I_sty_str=I_sty_str[n],
+            I_xts_rts=I_xts_rts[n],
+            I_yts_rts=I_yts_rts[n],
+            I_str_stx_sty_sts=I_str_stx_sty_sts[n],
+            I_rts_xts_yts_sts=I_rts_xts_yts_sts[n],
+            I_sts=I_sts[n],
+        ))
+    # then construct the lattice and solve for the atoms
+    phiid = [get_ig_lattice(d, verbose=verbose) for d in phiid]
 
     if as_dict:
-        return phiid
+        if pointwise:
+            return phiid    
+        else:
+            return phiid[0]
     else:
-        return np.array(list(phiid.values()))
+        # convert list of dicts to array of values
+        return np.array([list(d.values()) for d in phiid]).squeeze()
+    
