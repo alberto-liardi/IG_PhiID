@@ -210,7 +210,8 @@ def get_sts_IG(cov, n1=1, n2=1, pointwise=False, data=None):
             raise ValueError("Data must be provided for pointwise STS calculation.")
         distr = np.linalg.inv((1 - res.x[0] - res.x[1] - res.x[2]) * inv_cov11 + res.x[0] * inv_cov12 + res.x[1] * inv_cov21 + res.x[2] * inv_cov22)
         assert data.shape[0] == cov.shape[0], "Data dimensionality does not match covariance matrix."
-        from gaussian_utils import pointwise_phiid_IG
+        from gaussian_utils import pointwise_phiid_IG, demean
+        data = demean(data)
         pt_syn = pointwise_phiid_IG(cov, distr, data)
 
         return pt_syn, syn

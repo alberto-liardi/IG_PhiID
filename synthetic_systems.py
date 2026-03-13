@@ -664,3 +664,147 @@ def generate_markov_time_series(
         current_state = next_state
 
     return np.array(time_series, dtype=int).T
+
+
+def get_PhiID_atoms_16(noise=1e-32):
+    """
+    Returns a dict of 16 joint PMFs over (X1,X2,X3,X4) that maximize the
+    requested atoms: ["rtr","rtx","rty","rts","xtr","xtx","xty","xts",
+                      "ytr","ytx","yty","yts","str","stx","sty","sts"].
+
+    Constructions (latent bit L):
+      - Sources:
+        r: X1 = X2 = L
+        x: L = X1, X2 ~ noise
+        y: L = X2, X1 ~ noise
+        s: L = X1 XOR X2, X1,X2 uniform
+      - Targets:
+        r: X3 = X4 = L
+        x: X3 = L, X4 ~ noise
+        y: X4 = L, X3 ~ noise
+        s: X3 ~ U{0,1}, X4 = X3 XOR L
+
+    We assign equal probability 'p' to allowed states (others get 'noise').
+    """
+
+    def pmf_from_states(states, p):
+        pmf = np.full((2,2,2,2), noise, dtype=float)
+        for s in states:
+            pmf[s] = p
+        return pmf
+
+    atoms = {}
+
+    # rtr: redundant sources -> redundant targets
+    # L in {0,1}, X1=X2=L, X3=X4=L
+    atoms["rtr"] = pmf_from_states(
+        [(0,0,0,0), (1,1,1,1)],
+        p=1/2
+    )
+
+    # rtx: redundant sources -> unique X target (X3=L, X4 noise)
+    atoms["rtx"] = pmf_from_states(
+        [(0,0,0,0), (0,0,0,1), (1,1,1,0), (1,1,1,1)],
+        p=1/4
+    )
+
+    # rty: redundant sources -> unique Y target (X4=L, X3 noise)
+    atoms["rty"] = pmf_from_states(
+        [(0,0,0,0), (0,0,1,0), (1,1,0,1), (1,1,1,1)],
+        p=1/4
+    )
+
+    # rts: redundant sources -> synergistic targets (one-time pad on L)
+    atoms["rts"] = pmf_from_states(
+        [(0,0,0,0), (0,0,1,1), (1,1,0,1), (1,1,1,0)],
+        p=1/4
+    )
+
+    # xtr: unique-X source -> redundant targets (both copy X1)
+    atoms["xtr"] = pmf_from_states(
+        [(0,0,0,0), (0,1,0,0), (1,0,1,1), (1,1,1,1)],
+        p=1/4
+    )
+
+    # xtx: unique-X source -> unique-X target (X3=X1, X4 noise; X2 noise)
+    atoms["xtx"] = pmf_from_states(
+        [(0,0,0,0), (0,0,0,1), (0,1,0,0), (0,1,0,1),
+         (1,0,1,0), (1,0,1,1), (1,1,1,0), (1,1,1,1)],
+        p=1/8
+    )
+
+    # xty: unique-X source -> unique-Y target (X4=X1, X3 noise; X2 noise)
+    atoms["xty"] = pmf_from_states(
+        [(0,0,0,0), (0,0,1,0), (0,1,0,0), (0,1,1,0),
+         (1,0,0,1), (1,0,1,1), (1,1,0,1), (1,1,1,1)],
+        p=1/8
+    )
+
+    # xts: unique-X source -> synergistic targets (X3 ~ U, X4=X3 XOR X1; X2 noise)
+    atoms["xts"] = pmf_from_states(
+        [(0,0,0,0), (0,0,1,1), (0,1,0,0), (0,1,1,1),
+         (1,0,0,1), (1,0,1,0), (1,1,0,1), (1,1,1,0)],
+        p=1/8
+    )
+
+    # ytr: unique-Y source -> redundant targets (both copy X2)
+    atoms["ytr"] = pmf_from_states(
+        [(0,0,0,0), (1,0,0,0), (0,1,1,1), (1,1,1,1)],
+        p=1/4
+    )
+
+    # ytx: unique-Y source -> unique-X target (X3=X2, X4 noise; X1 noise)
+    atoms["ytx"] = pmf_from_states(
+        [(0,0,0,0), (0,0,0,1), (1,0,0,0), (1,0,0,1),
+         (0,1,1,0), (0,1,1,1), (1,1,1,0), (1,1,1,1)],
+        p=1/8
+    )
+
+    # yty: unique-Y source -> unique-Y target (X4=X2, X3 noise; X1 noise)
+    atoms["yty"] = pmf_from_states(
+        [(0,0,0,0), (0,0,1,0), (1,0,0,0), (1,0,1,0),
+         (0,1,0,1), (0,1,1,1), (1,1,0,1), (1,1,1,1)],
+        p=1/8
+    )
+
+    # yts: unique-Y source -> synergistic targets (X3 ~ U, X4=X3 XOR X2; X1 noise)
+    atoms["yts"] = pmf_from_states(
+        [(0,0,0,0), (0,0,1,1), (1,0,0,0), (1,0,1,1),
+         (0,1,0,1), (0,1,1,0), (1,1,0,1), (1,1,1,0)],
+        p=1/8
+    )
+
+    # str: synergistic sources (L = X1 XOR X2) -> redundant targets (both copy L)
+    atoms["str"] = pmf_from_states(
+        [(0,0,0,0), (1,1,0,0), (0,1,1,1), (1,0,1,1)],
+        p=1/4
+    )
+
+    # stx: synergistic sources -> unique-X target (X3=L, X4 noise)
+    atoms["stx"] = pmf_from_states(
+        [(0,0,0,0), (0,0,0,1),
+         (0,1,1,0), (0,1,1,1),
+         (1,0,1,0), (1,0,1,1),
+         (1,1,0,0), (1,1,0,1)],
+        p=1/8
+    )
+
+    # sty: synergistic sources -> unique-Y target (X4=L, X3 noise)
+    atoms["sty"] = pmf_from_states(
+        [(0,0,0,0), (0,0,1,0),
+         (0,1,0,1), (0,1,1,1),
+         (1,0,0,1), (1,0,1,1),
+         (1,1,0,0), (1,1,1,0)],
+        p=1/8
+    )
+
+    # sts: synergistic sources -> synergistic targets (X3 ~ U, X4 = X3 XOR (X1 XOR X2))
+    atoms["sts"] = pmf_from_states(
+        [(0,0,0,0), (0,0,1,1),
+         (1,1,0,0), (1,1,1,1),
+         (0,1,0,1), (0,1,1,0),
+         (1,0,0,1), (1,0,1,0)],
+        p=1/8
+    )
+
+    return atoms

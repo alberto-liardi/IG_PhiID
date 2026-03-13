@@ -331,7 +331,7 @@ def KL_gaussian_inv(Sigma_P, Sigma_Q_inv):
     return 0.5 * (trace_term - n - logdet_term)
 
 
-def pointwise_pid_IG(cov, min_cov, data, S1=1, S2=1, T=1, only_syn=False, as_dict=False):
+def pointwise_pid_IG(cov, min_cov, data, nS1=1, nS2=1, nT=1, only_syn=False, as_dict=False):
     """
     Compute the pointwise PhiID using the IG measure for a Gaussian system.
 
@@ -339,9 +339,9 @@ def pointwise_pid_IG(cov, min_cov, data, S1=1, S2=1, T=1, only_syn=False, as_dic
         cov (numpy.ndarray): Covariance matrix of the system.
         min_cov (numpy.ndarray): Minimum covariance matrix.
         data (numpy.ndarray): Data samples of shape (d, N).
-        S1 (int): Number of variables in the first source.
-        S2 (int): Number of variables in the second source.
-        T (int): Number of variables in the target.
+        nS1 (int): Number of variables in the first source.
+        nS2 (int): Number of variables in the second source.
+        nT (int): Number of variables in the target.
         as_dict (bool): Whether to return results as a dictionary.
     Returns:
         np.array or dict: containing the pointwise PhiID values for each atom.
@@ -354,10 +354,10 @@ def pointwise_pid_IG(cov, min_cov, data, S1=1, S2=1, T=1, only_syn=False, as_dic
         return pt_syn
     
     else:
-        assert cov.shape[0] == S1 + S2 + T, "Covariance matrix size does not match specified dimensions."
-        S1 = list(range(S1))
-        S2 = list(range(S1, S1 + S2))
-        T = list(range(S1 + S2, S1 + S2 + T))
+        assert cov.shape[0] == nS1 + nS2 + nT, "Covariance matrix size does not match specified dimensions."
+        S1 = list(range(nS1))
+        S2 = list(range(nS1, nS1 + nS2))
+        T = list(range(nS1 + nS2, nS1 + nS2 + nT))
 
         # calculate pointwise mutual information
         pmi0, _ = mutual_information(cov, S1, T, pointwise=True, data=data)
