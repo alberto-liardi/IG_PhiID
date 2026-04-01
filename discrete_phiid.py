@@ -4,7 +4,7 @@ from discrete_utils import compute_all_mi_terms, coalesc_distr, log_likelihood_d
 from get_lattice import get_ig_lattice
 
 
-def pointwise_pid_IG(dist, min_dist, data, nS1=1, nS2=1, nT=1, only_syn=False):
+def pointwise_pid_IG(dist, min_dist, data, only_syn=False):
     """
     Compute the pointwise PID using the IG measure for a discrete system.
 
@@ -16,12 +16,6 @@ def pointwise_pid_IG(dist, min_dist, data, nS1=1, nS2=1, nT=1, only_syn=False):
         Minimum distribution from optimization.
     data : np.ndarray
         Data samples of shape (n_vars, n_samples).
-    nS1 : int
-        Number of variables in the first source.
-    nS2 : int
-        Number of variables in the second source.
-    nT : int
-        Number of variables in the target.
     only_syn : bool
         Whether to compute only the synergistic component.
 
@@ -39,14 +33,10 @@ def pointwise_pid_IG(dist, min_dist, data, nS1=1, nS2=1, nT=1, only_syn=False):
     else:
         from discrete_utils import pointwise_mutual_information
         
-        S1 = list(range(nS1))
-        S2 = list(range(nS1, nS1 + nS2))
-        T = list(range(nS1 + nS2, nS1 + nS2 + nT))
-
         # Calculate pointwise mutual information
-        pmi0, _ = pointwise_mutual_information(dist, data, S1, T)
-        pmi1, _ = pointwise_mutual_information(dist, data, S2, T)
-        pmi01, _ = pointwise_mutual_information(dist, data, S1 + S2, T)
+        pmi0, _ = pointwise_mutual_information(dist, data, [0], [2])
+        pmi1, _ = pointwise_mutual_information(dist, data, [1], [2])
+        pmi01, _ = pointwise_mutual_information(dist, data, [0, 1], [2])
 
         pt_red = pt_syn + pmi0 + pmi1 - pmi01
         pt_unq0 = pmi0 - pt_red
@@ -80,7 +70,7 @@ def pointwise_phiid_IG(dist, min_dist, data):
     return pt_syn
 
 
-def ig_pid(d, pointwise=False, data=None, only_syn=False):
+def ig_pid(d, pointwise=False, data=None, only_syn=False, alternative_pointwise=False):
     """
     Compute the Information Geometric PID for two sources and one target.
     Implementation from https://github.com/dit/dit/ (see dit.pid.measures.iig.py)
@@ -94,7 +84,7 @@ def ig_pid(d, pointwise=False, data=None, only_syn=False):
     data : np.ndarray
         Data samples for pointwise calculation.
     only_syn : bool
-        Whether to compute only synergy for pointwise PID.
+        Whether to compute only synergy.
 
     Returns
     -------
@@ -139,23 +129,56 @@ def ig_pid(d, pointwise=False, data=None, only_syn=False):
     syn = objective(res.x)
     min_dist = p_star(res.x)
 
+    if not only_syn:
+        from discrete_utils import mutual_information
+        # Calculate pointwise mutual information
+        mi0 = mutual_information(d, [0], [2], pointwise=False)
+        mi1 = mutual_information(d, [1], [2], pointwise=False)
+        mi01 = mutual_information(d, [0, 1], [2], pointwise=False)
+
+        red = syn + mi0 + mi1 - mi01
+        unq0 = mi0 - red
+        unq1 = mi1 - red
+
+    if alternative_pointwise:
+        # Alternative pointwise calculation explicitly using the probability projections
+        log_qs = log_likelihood_discrete(data, min_dist)
+        log_ps = log_likelihood_discrete(data, d)
+        pt_syn = log_ps - log_qs    
+
+        # now make the pointwise versions of p1 and p2
+        p0 = p_t_s0 * p_s0s1
+        p1 = p_t_s1 * p_s0s1
+
+        log_p0 = log_likelihood_discrete(data, p0)
+        log_p1 = log_likelihood_discrete(data, p1)
+        pt_unq0 = log_qs - log_p1
+        pt_unq1 = log_qs - log_p0
+
+        p_ind = p_s0s1 * d.sum(axis=(0,1), keepdims=True)
+        pmi0 = log_likelihood_discrete(data, p0) - log_likelihood_discrete(data, p_ind)
+        pt_red = pmi0 - pt_unq0
+
+        pt_pid = np.stack([pt_red, pt_unq0, pt_unq1, pt_syn], axis=0)
+
+        return {"pointwise_pid": pt_pid, "pid": np.array([red, unq0, unq1, syn])}
+    
     if not pointwise:
-        return syn
+        if only_syn:
+            return syn
+        else:
+
+            return {"red": red, "unx": unq0, "uny": unq1, "syn": syn}
     else:
         if data is None:
             raise ValueError("Data must be provided for pointwise PID calculation.")
         
-        # Infer dimensions from distribution shape
-        nS1 = d.shape[0]
-        nS2 = d.shape[1]
-        nT = d.shape[2]
-        
-        pt_pid = pointwise_pid_IG(d, min_dist, data, nS1, nS2, nT, only_syn=only_syn)
+        pt_pid = pointwise_pid_IG(d, min_dist, data, only_syn=only_syn)
         
         if only_syn:
             return pt_pid, syn
         else:
-            return {"pointwise_pid": pt_pid, "pid": syn}
+            return {"pointwise_pid": pt_pid, "pid": np.array([red, unq0, unq1, syn])}
 
 
 def ig_synergy_4way(dist, pointwise=False, data=None):
@@ -277,7 +300,7 @@ def ig_phiid_discrete(prob, as_dict=True, verbose=False, pointwise=False, data=N
         if pointwise:
             return ig_pid(dist, pointwise=True, data=data_slice, only_syn=True)
         else:
-            return [ig_pid(dist, pointwise=False)]
+            return [ig_pid(dist, pointwise=False, only_syn=True)]
 
     p_x1x2y1 = prob.sum(axis=3)
     p_x1x2y2 = prob.sum(axis=2)

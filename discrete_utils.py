@@ -18,13 +18,6 @@ def pointwise_mutual_information(dist, data, src, tgt):
         Indices of source variables (axes of dist). Must be non-empty and disjoint from tgt.
     tgt : list[int]
         Indices of target variables (axes of dist). Must be non-empty and disjoint from src.
-    base : {2, 'e', 10, float}, default 2
-        Logarithm base for PMI.
-    zero_policy : {'zero', 'allow-inf'}, default 'zero'
-        - 'zero': set PMI to 0 where any of p(s), p(t), p(s,t)=0 (matches your loop behavior).
-        - 'allow-inf': keep -inf/+inf as produced by logs.
-    check : bool, default True
-        Validate inputs and normalize dist if needed (tolerant normalization).
 
     Returns
     -------
@@ -66,9 +59,9 @@ def pointwise_mutual_information(dist, data, src, tgt):
     # PMI per sample
     pmi = ll_joint - ll_src - ll_tgt
 
-    # Where any prob is zero -> corresponding ll is -inf -> set PMI to 0
+    # Where any prob is zero -> corresponding ll is -inf -> set PMI to nan
     finite_mask = np.isfinite(ll_src) & np.isfinite(ll_tgt) & np.isfinite(ll_joint)
-    pmi = np.where(finite_mask, pmi, 0.0)
+    pmi = np.where(finite_mask, pmi, np.nan)
 
     mi = float(np.mean(pmi))
     return pmi, mi
@@ -345,6 +338,37 @@ def estimate_discrete_distribution(x1, x2, y1, y2, alph_size=2):
     # Count occurrences of each combination
     for i in range(len(x1)):
         joint_counts[x1[i], x2[i], y1[i], y2[i]] += 1
+    
+    # Normalize to obtain probabilities
+    joint_probabilities = joint_counts / np.sum(joint_counts)
+    
+    return joint_probabilities
+
+
+def estimate_discrete_distribution3d(x1, x2, y, alph_size1=2, alph_size2=2, alph_size3=4):
+    """
+    Estimate the joint probability distribution of 3 discrete time series.
+    
+    Parameters:
+    - x1, x2, y: Lists or 1D numpy arrays of the same length, containing discrete values.
+    - alph_size1, alph_size2, alph_size3: The sizes of the alphabets for each variable. Default is 2, 2, 4 respectively.
+    
+    Returns:
+    - A 2x2x2 numpy array representing the joint probability distribution.
+    """
+    # Ensure the inputs are numpy arrays
+    x1, x2, y = map(np.asarray, (x1, x2, y))
+    
+    # Check that all series have the same length
+    if not (len(x1) == len(x2) == len(y)):
+        raise ValueError("All input time series must have the same length.")
+    
+    # Initialize a 2x2x2 matrix to store joint counts
+    joint_counts = np.zeros((alph_size1, alph_size2, alph_size3))
+    
+    # Count occurrences of each combination
+    for i in range(len(x1)):
+        joint_counts[x1[i], x2[i], y[i]] += 1
     
     # Normalize to obtain probabilities
     joint_probabilities = joint_counts / np.sum(joint_counts)
