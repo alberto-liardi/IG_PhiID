@@ -288,5 +288,5 @@ def ig_phiid_gaussian(cov, n1=1, n2=1, as_dict=True, verbose=False, pointwise=Fa
             return phiid[0]
     else:
         # convert list of dicts to array of values
-        return np.array([list(d.values()) for d in phiid]).squeeze()
+        return np.array(list(phiid[0].values()))
     

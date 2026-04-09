@@ -361,5 +361,5 @@ def ig_phiid_discrete(prob, as_dict=True, verbose=False, pointwise=False, data=N
         else:
             return phiid[0]
     else:
-        # Convert list of dicts to array of values
-        return np.array([list(d.values()) for d in phiid]).squeeze()
+        # convert list of dicts to array of values
+        return np.array(list(phiid[0].values()))
